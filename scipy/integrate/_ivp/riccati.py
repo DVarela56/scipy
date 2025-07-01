@@ -8,7 +8,7 @@ def solve_riccati(A, B, Q, R, PT, t_span, t_eval=None, method="davison-maki"):
     # TODO docstrings Bernardo
     # TODO implement t_eval
     
-    a, b, q, r, pt, tspan, m = _riccati_validate_args(A, B, Q, R, PT, t_span, t_eval, method)
+    a, b, q, r, pt, tspan, t_eval, m = _riccati_validate_args(A, B, Q, R, PT, t_span, t_eval, method)
     t0, tf = tspan
     h = t_eval[1] - t_eval[0]
 
@@ -23,30 +23,38 @@ def solve_riccati(A, B, Q, R, PT, t_span, t_eval=None, method="davison-maki"):
     # Initialize the solution matrixes
     p = []
     t = []
-    p_current = pt.copy()
-    t_current = tf
     
-    p.append(p_current)
-    t.append(t_current)
+    # p_next = P(k+1)
+    p_next = pt.copy()
+    # t_next = t(k+1)
+    t_next = tf
     
     theta = expm(-h * H)
     
-    if norm(theta, ord=1) < 1e8: # TODO change by tol_exp
+    if norm(theta, ord=1) > 1e8: # TODO change by tol_exp
         raise ValueError("Exponential matrix norm is too large, reduce step size h")
-        
+
     theta_11 = theta[:m, :m]
     theta_12 = theta[:m, m:]
     theta_21 = theta[m:, :m]
     theta_22 = theta[m:, m:]    
 
     
-    for t_next in t_eval[:-1][::-1]:
-        dt = t_next - t_current
-
-        # Update the current solution
-        p_next = (Phi_21 + Phi_22 @ P_current) @ np.linalg.inv(Phi_11 + Phi_12 @ P_current)
+    while t_next - h >= t0 - 1e-8:
+        U = theta_11 + theta_12 @ p_next
+        V = theta_21 + theta_22 @ p_next
+        p_k = solve(U.T, V.T).T # V @ inv(U)
         
+        t_next -= h
+        t.append(t_next)
+        p.append(p_k)
+        p_next = p_k
     
+    # Reverse the lists to have them in increasing order of time
+    p.reverse()
+    t.reverse()
+    return p, t
+
 def _riccati_validate_args(a, b, q, r, pt, tspan, t_eval, method):
     """
     Validate input arguments for the continuous-time Riccati Differential
@@ -101,8 +109,7 @@ def _riccati_validate_args(a, b, q, r, pt, tspan, t_eval, method):
     if t_eval is None:
         t_eval = np.linspace(tspan[0], tspan[1], 100)
     else:
-        t_eval = np.atleast_1d(_asarray_validated(t_eval, check_finite=True))
-
+        raise NotImplementedError("t_eval is not implemented yet, please use default t_eval")
     # Shape consistency checks
     m, n = b.shape
     if m != a.shape[0]:
@@ -144,4 +151,4 @@ def _riccati_validate_args(a, b, q, r, pt, tspan, t_eval, method):
     if tspan.shape != (2,):
         raise ValueError("tspan must be a 1D array-like of length 2 (e.g., [t0, tf])")
 
-    return a, b, q, r, pt, tspan, m
+    return a, b, q, r, pt, tspan, t_eval, m
